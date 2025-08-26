@@ -22,5 +22,6 @@ where:
 - The **board short name** describes which board the example code has been developed for (using board-specific port pins such as LED, communication, etc.)
 - The **example name** summarizes in a couple of words the scope and the model used in the example
 
-
+### List of available examples
+- HSP_TC499_Trajectory_Planning_Control
 
