@@ -1,0 +1,76 @@
+%% File : sfunUtil_printf.tlc
+%%
+%% Copyright 2014-2026 The MathWorks, Inc.
+%%
+%% Description:
+%%   Simulink Coder TLC Code Generation file for printf function
+%%
+
+%implements sfunUtil_printf "C"
+
+%% Function: BlockTypeSetup ===============================================
+%%
+%function BlockTypeSetup(block, system) void
+    %%
+    %% Ensure required header files are included
+    %<LibAddToCommonIncludes("mw_printf.h")>
+    %%
+%endfunction
+
+%% Function: BlockInstanceSetup ===========================================
+%%
+%function BlockInstanceSetup(block, system) void
+    %%
+    %<LibEnableBlockFcnOptimizations(block)>
+    %<LibBlockSetIsExpressionCompliant(block)>
+    %%
+%endfunction
+
+%% Function: Outputs ======================================================
+%%
+%function Outputs(block, system) Output
+    %%
+    %assign n         = SFcnParamSettings.numPorts
+    %assign bufferSize= SFcnParamSettings.bufferSize
+    %assign format    = SFcnParamSettings.Format
+    %%breakpoint
+
+    %if n == 0
+        MW_PRINTF("%<format>");
+    %else
+        MW_PRINTF("%<format>",
+        %foreach i = n
+            %assign arg = LibBlockInputSignal(i, "", "", 0)
+            %assign dataType = LibBlockInputSignalDataTypeId(i)
+            %%assign dtname = LibBlockInputSignalDataTypeName(i, "")
+            %assign dtname = LibGetDataTypeNameFromId(dataType)
+            %assign scaling= SFcnParamSettings.Scaling[i]
+            %assign bias   = SFcnParamSettings.Bias[i]
+
+            %if i != (n-1)
+                %assign next = ","
+            %else
+                %assign next = ");"
+            %endif
+
+            %if LibIsStringDataType(dataType)
+                    %<arg>%<next> /* string */
+            %else
+                %if dataType > ::CompiledModel.tSS_BOOLEAN && dataType != ::CompiledModel.tSS_INT64 && dataType != ::CompiledModel.tSS_UINT64
+                    %if bias != 0.0
+                        %assign bias = " + %<bias>"
+                    %else
+                        %assign bias = ""
+                    %endif
+                    (real_T)%<arg> * %<scaling>%<bias>%<next> /* FixedPoint */
+                %else
+                    %<arg>%<next> /* %<dtname> */
+                %endif
+            %endif
+        %endforeach
+    %endif
+
+    %%
+%endfunction
+
+%% [EOF]
