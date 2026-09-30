@@ -1,0 +1,251 @@
+%% File : sfunCCall.tlc
+%%
+%% Copyright 2014-2021 The MathWorks, Inc.
+%%
+%% Description:
+%%   Simulink Coder TLC Code Generation file for C-call
+%%
+
+%implements sfunCCall "C"
+
+%% Function: BlockTypeSetup ===============================================
+%%
+%function BlockTypeSetup(block, system) void
+  %%
+%endfunction
+
+%% Function: BlockInstanceSetup ===========================================
+%%
+%function BlockInstanceSetup(block, system) void
+  %%
+  %<LibEnableBlockFcnOptimizations(block)>
+  %%
+  %assign place     = SFcnParamSettings.StepPlace
+  %if place == "default"    %% When trailer, it can be too much optimized
+                            %% and placed too late in the code into next subsystem
+    %<LibBlockSetIsExpressionCompliant(block)>
+  %endif
+
+  %assign file = FEVAL("strtrim", SFcnParamSettings.Include)
+  %if !ISEMPTY(file)
+    %assign tok = FEVAL("textscan", file, "%s", "Delimiter", ",;")
+    %foreach i=%<SIZE(tok,1)>
+        %assign str = FEVAL("strtrim", tok[0][i])
+        %assign mcode = FEVAL("regexp", str, "\\$.+\\$", "match", "once")
+        %if !ISEMPTY(mcode)
+            %assign mcode = FEVAL("strrep", mcode, "$", "")
+            %assign mcode = FEVAL(mcode)
+            %assign str = FEVAL("regexprep", str, "\\$.+\\$", mcode)
+        %endif
+        %<LibAddToCommonIncludes("%<str>")>
+    %endforeach
+  %endif
+
+  %assign file = FEVAL("strtrim", SFcnParamSettings.SRC)
+  %if !ISEMPTY(file)
+    %assign tok = FEVAL("textscan", file, "%s", "Delimiter", ",;")
+    %foreach i=%<SIZE(tok,1)>
+        %assign str = FEVAL("strtrim", tok[0][i])
+        %assign mcode = FEVAL("regexp", str, "\\$.+\\$", "match", "once")
+        %if !ISEMPTY(mcode)
+            %assign mcode = FEVAL("strrep", mcode, "$", "")
+            %assign mcode = FEVAL(mcode)
+            %assign str = FEVAL("regexprep", str, "\\$.+\\$", mcode)
+        %endif
+        %<SLibAddToStaticSources("%<str>")>
+    %endforeach
+  %endif
+
+  %%
+  %assign modelH = LibGetModelDotHFile()
+  %assign modelC = LibGetModelDotCFile()
+  %%
+  %assign vardecl = SFcnParamSettings.VarDecl
+  %if !ISEMPTY(vardecl)
+    %<LibSetSourceFileSection(modelH, "Definitions", vardecl)>
+  %endif
+  %%
+  %assign vardef = SFcnParamSettings.VarDef
+  %if !ISEMPTY(vardef)
+    %<LibSetSourceFileSection(modelC, "Declarations", vardef)>
+  %endif
+  %%
+%endfunction
+
+%% Function: Start ======================================================
+%%
+%function Start(block, system) Output
+%%
+  %assign initcall  = SFcnParamSettings.InitCall
+  %assign place     = SFcnParamSettings.InitPlace
+
+  %if !ISEMPTY(initcall)
+      %openfile buffer
+        /* Block: '%<Name>' */
+        %<initcall>
+      %closefile buffer
+
+      %if place == "default"
+        %<buffer>
+      %else
+        %<LibSystemInitializeCustomCode(system, buffer, place)>
+      %endif
+  %endif
+%%
+%endfunction
+
+%% Function: Outputs ======================================================
+%%
+%function Outputs(block, system) Output
+%%
+  %assign nIn       = SFcnParamSettings.numPorts
+  %assign stepcall  = SFcnParamSettings.StepCall
+  %assign dataType  = SFcnParamSettings.dataType
+  %assign place     = SFcnParamSettings.StepPlace
+  %assign t         = SFcnParamSettings.inTypes
+  %assign s         = SFcnParamSettings.inSize
+  %assign nOut      = SFcnParamSettings.numOutPorts
+  %%
+
+  %% Replace input symbols with signal variables
+  %foreach i = nIn
+    %switch t[i]
+        %case 1 %% Value
+            %assign arg = LibBlockInputSignal(i, "", "", 0)
+            %assign stepcall = FEVAL("strrep", stepcall, "$%<i+1>", arg)
+        %break
+
+        %case 2 %% Reference
+            %assign arg = LibBlockInputSignalAddr(i, "", "", 0)
+            %assign stepcall = FEVAL("strrep", stepcall, "&%<i+1>", arg)
+        %break
+
+        %default
+            %assign errTxt = "Internal error: %<t[i]>"
+            %<LibBlockReportError(block,errTxt)>
+        %break
+
+    %endswitch
+  %endforeach
+
+  %% Replace input signal size symbols by signal width
+  %foreach i = SIZE(s, 1)
+    %if s[i]
+        %assign arg = LibBlockInputSignalWidth(i)
+        %assign stepcall = FEVAL("strrep", stepcall, "#%<i+1>", "%<arg>")
+    %endif
+  %endforeach
+
+  %% Replace output symbols by reference by output variables
+  %assign outNumOffset = 0
+  %if dataType != -2    %% -2 means "void" return type, e.g. none
+    %assign outNumOffset = 1
+  %endif
+
+  %foreach i = nOut
+     %assign arg = LibBlockOutputSignalAddr(i+outNumOffset, "", "", 0)
+     %assign stepcall = FEVAL("strrep", stepcall, "%%<i+1>", "%<arg>")
+  %endforeach
+
+  %openfile buffer
+  /* Block: '%<Name>' */
+  %if dataType == -2    %% -2 means "void" return type, e.g. none
+    %<stepcall>
+  %else
+    %assign retVal = LibBlockOutputSignal(0, "", "", 0)
+    %<retVal> = %<stepcall>;
+  %endif
+  %closefile buffer
+
+  %if place == "default"
+    %<buffer>
+  %else
+    /* Custom Code: %<place> */
+    %<LibSystemOutputCustomCode(system, buffer, place)>
+  %endif
+
+  %% "header"          Place buffer at top of function
+  %% "declaration"     Place buffer at top of function
+  %% "execution"       Place buffer at top of function, but after header
+  %% "trailer"         Place buffer at bottom of function
+  %%
+%endfunction
+
+%% Function: BlockOutputSignal ============================================
+%%
+%function BlockOutputSignal(block,system,portIdx,ucv,lcv,idx,retType) void
+  %%
+  %assign nIn       = SFcnParamSettings.numPorts
+  %assign stepcall  = SFcnParamSettings.StepCall
+  %assign dataType  = SFcnParamSettings.dataType
+  %assign t         = SFcnParamSettings.inTypes
+  %assign s         = SFcnParamSettings.inSize
+  %assign nOut      = SFcnParamSettings.numOutPorts
+
+  %% Replace input symbols with signal variables
+  %foreach i = nIn
+    %switch t[i]
+        %case 1 %% Value
+            %assign arg = LibBlockInputSignal(i, "", "", 0)
+            %assign stepcall = FEVAL("strrep", stepcall, "$%<i+1>", arg)
+        %break
+
+        %case 2 %% Reference
+            %assign arg = LibBlockInputSignalAddr(i, "", "", 0)
+            %assign stepcall = FEVAL("strrep", stepcall, "&%<i+1>", arg)
+        %break
+
+        %default
+            %assign errTxt = "Internal error: %<t[i]>"
+            %<LibBlockReportError(block,errTxt)>
+        %break
+
+    %endswitch
+  %endforeach
+
+  %% Replace input signal size symbols by signal width
+  %foreach i = SIZE(s, 1)
+    %if s[i]
+        %assign arg = LibBlockInputSignalWidth(i)
+        %assign stepcall = FEVAL("strrep", stepcall, "#%<i+1>", "%<arg>")
+    %endif
+  %endforeach
+
+  %assign outNumOffset = 0
+  %if dataType != -2    %% -2 means "void" return type, e.g. none
+    %assign outNumOffset = 1
+  %endif
+
+  %foreach i = nOut
+     %assign arg = LibBlockOutputSignalAddr(i+outNumOffset, "", "", 0)
+     %assign stepcall = FEVAL("strrep", stepcall, "%%<i+1>", "%<arg>")
+  %endforeach
+
+  %%
+  %switch retType
+    %case "Signal"
+      %if portIdx == 0
+        %return "%<stepcall>"
+      %else
+        %assign errTxt = "Block output port index not supported: %<portIdx>"
+        %<LibBlockReportError(block,errTxt)>
+      %endif
+    %default
+      %assign errTxt = "Unsupported return type: %<retType>"
+      %<LibBlockReportError(block,errTxt)>
+  %endswitch
+  %%
+%endfunction
+
+%% Function: Terminate ======================================================
+%%
+%function Terminate(block, system) Output
+%%
+  %assign termcall  = SFcnParamSettings.TermCall
+  %if !ISEMPTY(termcall)
+    %<termcall>
+  %endif
+%%
+%endfunction
+
+%% [EOF]

@@ -24,4 +24,5 @@ where:
 
 ### List of available examples
 - HSP_TC499_Trajectory_Planning_Control
+- HSP_TC499_Demo_AI_PID_Trajectory_Control
 

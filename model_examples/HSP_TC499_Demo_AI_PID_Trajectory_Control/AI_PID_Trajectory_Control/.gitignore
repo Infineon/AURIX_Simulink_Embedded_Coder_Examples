@@ -1,0 +1,24 @@
+# MATLAB Build Collaterals
+*.elf
+*.hex
+*.map
+*.mdf
+
+# Simulink Cache Files
+*.slxc
+
+# MEX Files
+*.mexw64
+
+# Build Folders
+PPU/
+slprj/
+soc_prj/
+TriCore/
+
+# Additional MATLAB/Simulink Generated Files
+*.autosave
+*.slxp
+*.r2*
+*_sfun.bat
+*.tmw
